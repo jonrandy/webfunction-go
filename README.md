@@ -2,8 +2,8 @@
 
 A Go client library for the [Web Function](https://webfunction.org) protocol.
 
-Ported from and cross-checked against the reference Ruby gem
-([robinclart/web_function](https://github.com/robinclart/web_function)), with
+Ported from and cross-checked against the official Ruby
+([gem](https://github.com/webfunction-protocol/webfunction-ruby)), with
 adjustments where Go's language model genuinely differs (no dynamic
 dispatch, no exceptions, no operator overloading) or where a deliberate
 design choice was made instead of following the reference exactly.

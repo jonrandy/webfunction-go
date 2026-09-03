@@ -6,7 +6,7 @@ package webfunction
 // NOTE: this intentionally has no EventSourceURL/Events fields. An earlier
 // Go model (in the wfn CLI's own webfunction/ package) included them, but
 // they don't appear anywhere in the Ruby reference client (github.com/
-// robinclart/web_function) - no event_source_url, no Event type, no
+// webfunction-protocol/webfunction-ruby) - no event_source_url, no Event type, no
 // "event_source" flag usage. Whether "events" are a real, still-unimplemented
 // part of the webfunction.org spec, or an earlier over-read of the spec
 // site, is unconfirmed. Left out here until that's resolved.
@@ -123,7 +123,7 @@ func (e *Endpoint) HasFlag(flag string) bool {
 
 // Paginated reports whether the endpoint declares the "paginated" flag.
 //
-// Per Jon's explicit decision, pagination in this client is detected via
+// Per explicit design decision, pagination in this client is detected via
 // this flag, not by sniffing the response shape the way the Ruby
 // reference client does (Page.wrap running shape-detection on every
 // response) - a deliberate deviation from the reference implementation.
