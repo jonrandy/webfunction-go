@@ -443,3 +443,33 @@ func asUnresolved(err error, target **UnresolvedPromiseError) bool {
 	}
 	return false
 }
+func TestJoinEndpointURL(t *testing.T) {
+	// Regression test for a real bug: joinEndpointURL previously used
+	// RFC 3986 relative reference resolution (url.ResolveReference),
+	// which replaces a base_url path's last segment instead of
+	// appending under it when base_url doesn't end in "/". The spec
+	// (https://webfunction.org/package#url-composition) calls for
+	// plain string-level normalization instead, which has no such
+	// failure mode.
+	cases := []struct {
+		baseURL string
+		name    string
+		want    string
+	}{
+		{"https://api.example.com", "list-people", "https://api.example.com/list-people"},
+		{"https://api.example.com/", "list-people", "https://api.example.com/list-people"},
+		{"https://api.example.com/v1", "list-people", "https://api.example.com/v1/list-people"},
+		{"https://api.example.com/v1/", "list-people", "https://api.example.com/v1/list-people"},
+		{"https://api.example.com/v1/merchants", "list-people", "https://api.example.com/v1/merchants/list-people"},
+	}
+	for _, c := range cases {
+		got, err := joinEndpointURL(c.baseURL, c.name)
+		if err != nil {
+			t.Errorf("joinEndpointURL(%q, %q) returned error: %v", c.baseURL, c.name, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("joinEndpointURL(%q, %q) = %q, want %q", c.baseURL, c.name, got, c.want)
+		}
+	}
+}

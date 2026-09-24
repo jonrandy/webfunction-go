@@ -3,13 +3,17 @@ package webfunction
 // Package is the top-level Web Function package definition.
 // See https://webfunction.org/package#package-definition.
 //
-// NOTE: this intentionally has no EventSourceURL/Events fields. An earlier
-// Go model (in the wfn CLI's own webfunction/ package) included them, but
-// they don't appear anywhere in the Ruby reference client (github.com/
-// webfunction-protocol/webfunction-ruby) - no event_source_url, no Event type, no
-// "event_source" flag usage. Whether "events" are a real, still-unimplemented
-// part of the webfunction.org spec, or an earlier over-read of the spec
-// site, is unconfirmed. Left out here until that's resolved.
+// NOTE: this still has no EventSourceURL/Events fields, though that's now
+// a known gap rather than an open question. https://webfunction.org/package
+// documents event_source_url and an "events" array (with a full Event
+// definition schema) as real, defined optional package keys - so this
+// isn't an early over-read of the spec site after all. The Ruby reference
+// client (github.com/webfunction-protocol/webfunction-ruby) simply hasn't
+// implemented them yet - no event_source_url, no Event type, no
+// "event_source" flag usage there either. Left out here until events
+// support is added on the Go side (a real feature, not just a struct
+// field - needs an Event type too); PipelineURL below is unaffected,
+// it's a separate, already-real spec key.
 type Package struct {
 	BaseURL     string     `json:"base_url"`
 	PipelineURL string     `json:"pipeline_url,omitempty"`

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 )
 
 // Options configures a Client at construction time. All fields are
@@ -217,24 +218,32 @@ func packageFromValue(v any) (*Package, error) {
 	return &pkg, nil
 }
 
-// joinEndpointURL joins a package's base URL with an endpoint name,
-// mirroring the Ruby reference's URI.join(base_url, endpoint_name) via
-// RFC 3986 relative reference resolution - e.g. a base_url ending in "/"
-// appends name as a new path segment, while one without treats name as
-// replacing the last segment, same as Ruby's URI.join.
+// joinEndpointURL joins a package's base URL with an endpoint name, per
+// https://webfunction.org/package#url-composition: if base_url ends in
+// "/", name is appended directly; otherwise a single "/" is inserted.
+// This is plain string-level normalization, NOT RFC 3986 relative
+// reference resolution.
 //
-// Deliberately uses ResolveReference rather than url.URL.JoinPath: JoinPath
-// was only added in Go 1.19, and this library targets any Go version (see
-// the pagination-design decision to avoid Go 1.23+ iterators for the same
-// reason) - ResolveReference has been in net/url since Go 1.0.
+// A previous version of this function used url.ResolveReference to
+// mirror what was believed to be the Ruby reference's URI.join
+// behavior. That was a real bug: RFC 3986 resolution treats a base_url
+// path segment as replaceable when base_url doesn't end in "/" - e.g.
+// resolving "list-people" against "https://api.example.com/v1" (no
+// trailing slash) silently drops "v1" and produces
+// "https://api.example.com/list-people" instead of
+// "https://api.example.com/v1/list-people". The spec's own
+// composition rule has no such failure mode: it works correctly for a
+// base_url with or without a trailing slash, so callers no longer need
+// to ensure base_url ends in "/" to get correct URLs.
 func joinEndpointURL(baseURL, name string) (string, error) {
-	base, err := url.Parse(baseURL)
-	if err != nil {
+	if _, err := url.Parse(baseURL); err != nil {
 		return "", fmt.Errorf("parsing base url %s: %w", baseURL, err)
 	}
-	ref, err := url.Parse(name)
-	if err != nil {
+	if _, err := url.Parse(name); err != nil {
 		return "", fmt.Errorf("parsing endpoint name %s: %w", name, err)
 	}
-	return base.ResolveReference(ref).String(), nil
+	if strings.HasSuffix(baseURL, "/") {
+		return baseURL + name, nil
+	}
+	return baseURL + "/" + name, nil
 }
