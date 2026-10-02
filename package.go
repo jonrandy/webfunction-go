@@ -199,6 +199,13 @@ func (a *Argument) Optional() bool {
 	return !a.Required()
 }
 
+// Private reports whether the argument is internal-only and should be
+// omitted from generated docs or codegen output. A private argument is
+// never also required.
+func (a *Argument) Private() bool {
+	return hasFlag(a.Flags, "private")
+}
+
 // Attribute describes a single attribute of an object returned by an
 // endpoint.
 // See https://webfunction.org/package#attribute-definition.
@@ -217,6 +224,12 @@ type Attribute struct {
 // null. Consumers SHOULD treat a missing key and a null value equivalently.
 func (a *Attribute) Nullable() bool {
 	return hasFlag(a.Flags, "nullable")
+}
+
+// Private reports whether the attribute is internal-only and should be
+// omitted from generated docs or codegen output.
+func (a *Attribute) Private() bool {
+	return hasFlag(a.Flags, "private")
 }
 
 // Object is a named, reusable object type definition, referenced elsewhere
