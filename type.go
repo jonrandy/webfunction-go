@@ -44,7 +44,29 @@ type TypeAlt struct {
 	// wire form was a nested array (e.g. [["string"]] means "array of
 	// string"). Nil for a bare "array" entry (array of any).
 	Of *Type
+
+	// Arg is the type argument when this alternative is a generic object
+	// applied to a type: { "object.list": "object.user" } parses to Base
+	// "object", Refinement "list" and Arg "object.user". Nil otherwise.
+	Arg *Type
+
+	// Malformed is non-empty when this alternative stands in for an invalid
+	// generic application. Such an alternative is parsed as a bare "any" so
+	// clients never fail on it, and this holds one of the Malformed*
+	// reasons so validation tooling can still report it. Empty for every
+	// well-formed alternative.
+	Malformed string
 }
+
+// Reasons recorded in TypeAlt.Malformed.
+const (
+	// MalformedKeyCount: an application object did not have exactly one key.
+	MalformedKeyCount = "key-count"
+	// MalformedKeyPrefix: the application object's key was not "object.<name>".
+	MalformedKeyPrefix = "key-prefix"
+	// MalformedArgument: the application's value was not a valid type.
+	MalformedArgument = "argument"
+)
 
 // IsObjectRef reports whether this alternative is a reference to a named
 // object definition (an "object.<n>" refinement).
@@ -59,6 +81,9 @@ func (a TypeAlt) String() string {
 	}
 	if a.Base == "array" && a.Of != nil {
 		s += "<" + a.Of.String() + ">"
+	}
+	if a.Arg != nil {
+		s += "<" + a.Arg.String() + ">"
 	}
 	return s
 }
@@ -97,6 +122,9 @@ func (t Type) ObjectNames() []string {
 		}
 		if alt.Of != nil {
 			names = append(names, alt.Of.ObjectNames()...)
+		}
+		if alt.Arg != nil {
+			names = append(names, alt.Arg.ObjectNames()...)
 		}
 	}
 	return names
@@ -312,14 +340,18 @@ func (a TypeAlt) format(style string) string {
 		if a.Base == "array" && a.Of != nil {
 			s += "<" + a.Of.format(style) + ">"
 		}
+		if a.Arg != nil {
+			s += "<" + a.Arg.format(style) + ">"
+		}
 		return s
 	}
 }
 
 // UnmarshalJSON parses the recursive type grammar: a JSON null (treated as
 // "any" - only actually expected for choices/values elements, not type
-// fields themselves, but handled defensively), a bare string, or a JSON
-// array whose entries are either strings or nested arrays.
+// fields themselves, but handled defensively), a bare string, a generic
+// application object ({ "object.<name>": <type> }), or a JSON array whose
+// entries are strings, nested arrays or application objects.
 func (t *Type) UnmarshalJSON(data []byte) error {
 	var raw interface{}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -339,6 +371,8 @@ func parseTypeValue(raw interface{}) (Type, error) {
 		return Type{Union: []TypeAlt{{Base: "any"}}}, nil
 	case string:
 		return Type{Union: []TypeAlt{parseTypeString(v)}}, nil
+	case map[string]interface{}:
+		return Type{Union: []TypeAlt{parseApplication(v)}}, nil
 	case []interface{}:
 		if len(v) == 0 {
 			// Not permitted per spec ("Arrays MUST NOT be empty at any
@@ -351,6 +385,8 @@ func parseTypeValue(raw interface{}) (Type, error) {
 			switch e := elem.(type) {
 			case string:
 				alts = append(alts, parseTypeString(e))
+			case map[string]interface{}:
+				alts = append(alts, parseApplication(e))
 			case []interface{}:
 				inner, err := parseTypeValue(e)
 				if err != nil {
@@ -365,6 +401,28 @@ func parseTypeValue(raw interface{}) (Type, error) {
 	default:
 		return Type{}, fmt.Errorf("unexpected type value %T", raw)
 	}
+}
+
+// parseApplication parses a generic type application object,
+// { "object.<name>": <type> }. Anything that is not exactly that shape
+// resolves to a bare "any" carrying the reason in Malformed, rather than
+// an error, so a package using generics (even incorrectly) still loads.
+func parseApplication(m map[string]interface{}) TypeAlt {
+	if len(m) != 1 {
+		return TypeAlt{Base: "any", Malformed: MalformedKeyCount}
+	}
+	for key, val := range m {
+		name := strings.TrimPrefix(key, "object.")
+		if name == key || name == "" {
+			return TypeAlt{Base: "any", Malformed: MalformedKeyPrefix}
+		}
+		arg, err := parseTypeValue(val)
+		if err != nil {
+			return TypeAlt{Base: "any", Malformed: MalformedArgument}
+		}
+		return TypeAlt{Base: "object", Refinement: name, Arg: &arg}
+	}
+	return TypeAlt{Base: "any", Malformed: MalformedKeyCount}
 }
 
 func parseTypeString(s string) TypeAlt {
