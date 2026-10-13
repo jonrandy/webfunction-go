@@ -56,6 +56,12 @@ type TypeAlt struct {
 	// reasons so validation tooling can still report it. Empty for every
 	// well-formed alternative.
 	Malformed string
+
+	// Param is true for the generic type parameter token "T". An
+	// unresolved parameter is "any" to every consumer (Base is "any", so it
+	// accepts any value, as the spec's runtime fallback requires); Param
+	// only lets tooling that expands generics tell it from a literal "any".
+	Param bool
 }
 
 // Reasons recorded in TypeAlt.Malformed.
@@ -428,6 +434,9 @@ func parseApplication(m map[string]interface{}) TypeAlt {
 func parseTypeString(s string) TypeAlt {
 	if s == "array" {
 		return TypeAlt{Base: "array"}
+	}
+	if s == "T" {
+		return TypeAlt{Base: "any", Param: true}
 	}
 	if i := strings.IndexByte(s, '.'); i >= 0 {
 		base := s[:i]

@@ -151,18 +151,38 @@ func TestTypeApplicationFormatAndValid(t *testing.T) {
 	}
 }
 
-// "T" is just a bare token to the parser; resolving it is the job of a
-// later layer. It must parse without error, including inside arrays/unions.
-func TestTypeParamTokenParses(t *testing.T) {
+// An unresolved type parameter reads as "any" to every consumer, as the
+// spec's runtime fallback requires, but is marked so tooling that expands
+// generics can still tell it from a literal "any".
+func TestTypeParamResolvesToAny(t *testing.T) {
 	cases := map[string]string{
-		`"T"`:          "T",
-		`[["T"]]`:      "array<T>",
-		`["T","null"]`: "T|null",
+		`"T"`:          "any",
+		`[["T"]]`:      "array<any>",
+		`["T","null"]`: "any|null",
 	}
 	for raw, want := range cases {
 		if got := parseType(t, raw).String(); got != want {
 			t.Errorf("%s: got %q, want %q", raw, got, want)
 		}
+	}
+
+	alt := parseType(t, `"T"`).Union[0]
+	if alt.Base != "any" || !alt.Param {
+		t.Errorf("T should be any with Param set, got %+v", alt)
+	}
+	if !parseType(t, `[["T"]]`).Union[0].Of.Union[0].Param {
+		t.Error("Param must survive inside an array element")
+	}
+	if !parseType(t, `"T"`).Valid(map[string]any{"x": 1.0}) || !parseType(t, `"T"`).Valid("anything") {
+		t.Error("an unresolved T must accept any value")
+	}
+
+	// A literal "any", and an object that happens to be named T, are not params.
+	if parseType(t, `null`).Union[0].Param || parseType(t, `"object.T"`).Union[0].Param {
+		t.Error("only the bare token T is a type parameter")
+	}
+	if got := parseType(t, `"object.T"`).String(); got != "object.T" {
+		t.Errorf("object.T: got %q", got)
 	}
 }
 
@@ -206,7 +226,7 @@ func TestPackageWithGenericsLoads(t *testing.T) {
 	if got := pkg.Endpoint("broken").Returns.String(); got != "any" {
 		t.Errorf("malformed returns: got %q, want any", got)
 	}
-	if got := pkg.Object("list").Attributes[1].Type.String(); got != "array<T>" {
+	if got := pkg.Object("list").Attributes[1].Type.String(); got != "array<any>" {
 		t.Errorf("T attribute: got %q", got)
 	}
 }
