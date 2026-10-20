@@ -42,7 +42,9 @@ type TypeAlt struct {
 
 	// Of is the element type, present only when Base == "array" and the
 	// wire form was a nested array (e.g. [["string"]] means "array of
-	// string"). Nil for a bare "array" entry (array of any).
+	// string") or an array application ({ "array": "string" }, which
+	// parses to exactly the same value). Nil for a bare "array" entry
+	// (array of any).
 	Of *Type
 
 	// Arg is the type argument when this alternative is a generic object
@@ -68,7 +70,8 @@ type TypeAlt struct {
 const (
 	// MalformedKeyCount: an application object did not have exactly one key.
 	MalformedKeyCount = "key-count"
-	// MalformedKeyPrefix: the application object's key was not "object.<name>".
+	// MalformedKeyPrefix: the application object's key was neither
+	// "object.<name>" nor "array".
 	MalformedKeyPrefix = "key-prefix"
 	// MalformedArgument: the application's value was not a valid type.
 	MalformedArgument = "argument"
@@ -355,9 +358,10 @@ func (a TypeAlt) format(style string) string {
 
 // UnmarshalJSON parses the recursive type grammar: a JSON null (treated as
 // "any" - only actually expected for choices/values elements, not type
-// fields themselves, but handled defensively), a bare string, a generic
-// application object ({ "object.<name>": <type> }), or a JSON array whose
-// entries are strings, nested arrays or application objects.
+// fields themselves, but handled defensively), a bare string, an
+// application object ({ "object.<name>": <type> } or { "array": <type> }),
+// or a JSON array whose entries are strings, nested arrays or application
+// objects.
 func (t *Type) UnmarshalJSON(data []byte) error {
 	var raw interface{}
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -409,15 +413,25 @@ func parseTypeValue(raw interface{}) (Type, error) {
 	}
 }
 
-// parseApplication parses a generic type application object,
-// { "object.<name>": <type> }. Anything that is not exactly that shape
-// resolves to a bare "any" carrying the reason in Malformed, rather than
-// an error, so a package using generics (even incorrectly) still loads.
+// parseApplication parses a type application object: a generic object
+// applied to a type, { "object.<name>": <type> }, or an array of a type,
+// { "array": <type> }. The array form parses to the same value as the
+// nested-array wire form, [[<type>]]. Anything that is not exactly one of
+// those shapes resolves to a bare "any" carrying the reason in Malformed,
+// rather than an error, so a package using generics (even incorrectly)
+// still loads.
 func parseApplication(m map[string]interface{}) TypeAlt {
 	if len(m) != 1 {
 		return TypeAlt{Base: "any", Malformed: MalformedKeyCount}
 	}
 	for key, val := range m {
+		if key == "array" {
+			of, err := parseTypeValue(val)
+			if err != nil {
+				return TypeAlt{Base: "any", Malformed: MalformedArgument}
+			}
+			return TypeAlt{Base: "array", Of: &of}
+		}
 		name := strings.TrimPrefix(key, "object.")
 		if name == key || name == "" {
 			return TypeAlt{Base: "any", Malformed: MalformedKeyPrefix}
